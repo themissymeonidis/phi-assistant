@@ -4,23 +4,33 @@ import faiss, time
 from terminal.animations import Animations
 from utils.conversation_logger import conversation_logger
 from utils.database import db_manager
-from embeddings.faiss_persistence import FaissPersistenceManager
+from embeddings.base.faiss_persistence import FaissPersistenceManager
+from embeddings.base.embedding_manager import BaseEmbeddingManager
+from embeddings.config import EmbeddingConfig
 
 from dotenv import load_dotenv
 load_dotenv()
 
 
 
-class ToolEmbeddingsManager:
-    def __init__(self, distance_threshold=1.5, enable_persistence=True):
+class ToolEmbeddingManager(BaseEmbeddingManager):
+    def __init__(self, config: EmbeddingConfig = None):
+        self.config = config or EmbeddingConfig()
         self.animator = Animations()
-        self.distance_threshold = distance_threshold
-        self.embedding_model_name = 'all-MiniLM-L6-v2'
-        self.enable_persistence = enable_persistence
+        self.distance_threshold = self.config.distance_threshold
+        self.embedding_model_name = self.config.model_name
+        self.enable_persistence = self.config.enable_persistence
+        
+        # Initialize base class
+        super().__init__(
+            embedding_model_name=self.embedding_model_name,
+            index_dir=self.config.tool_index_dir,
+            config=self.config
+        )
         
         # Initialize persistence manager
         if self.enable_persistence:
-            self.persistence_manager = FaissPersistenceManager()
+            self.persistence_manager = FaissPersistenceManager(self.config.tool_index_dir)
         
         def load():
             self._load_with_persistence()
@@ -43,13 +53,24 @@ class ToolEmbeddingsManager:
         mapping = {i: {"name": name, **self.tool_dict[name]} for i, name in enumerate(self.tool_dict)}
         return vectors, mapping
 
+    def _build_index(self, vectors, mapping):
+        """Build FAISS index from vectors and mapping"""
+        d = vectors.shape[1]
+        index = faiss.IndexFlatL2(d)
+        index.add(vectors)
+        return index
+    
+    def _search_index(self, query_vector, k):
+        """Search index with query vector"""
+        return self.index.search(query_vector, k)
+    
     def create_faiss_index(self, vectors):
         d = vectors.shape[1]
         index = faiss.IndexFlatL2(d)
         index.add(vectors)
         return index
     
-    def query_tools_optimized(self, user_query, max_candidates=3, min_semantic_score=0.4):
+    def query_tools_optimized(self, user_query, max_candidates=None, min_semantic_score=None):
         """
         Optimized tool querying with precision-focused filtering
         
@@ -61,13 +82,17 @@ class ToolEmbeddingsManager:
         Returns:
             List of top-ranked tools with enhanced filtering
         """
+        # Use config defaults if not provided
+        max_candidates = max_candidates or self.config.tool_max_candidates
+        min_semantic_score = min_semantic_score or self.config.tool_min_semantic_score
+        
         start_time = time.time()
         
         # Phase 1: Conservative FAISS search
-        query_vector = self.embedding_model.encode([user_query]).astype('float32')
+        query_vector = self._encode_query(user_query)
         
         # Search more candidates initially for better ranking
-        search_k = min(15, len(self.tool_mapping) * 2)
+        search_k = min(self.config.tool_search_k, len(self.tool_mapping) * 2)
         distances, indices = self.index.search(query_vector, search_k)
         
         # Phase 2: Multi-factor scoring and filtering

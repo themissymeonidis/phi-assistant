@@ -15,48 +15,60 @@ from sentence_transformers import SentenceTransformer
 
 from utils.database import db_manager
 from utils.conversation_logger import conversation_logger
-from embeddings.faiss_persistence import FaissPersistenceManager
+from embeddings.base.faiss_persistence import FaissPersistenceManager
+from embeddings.base.embedding_manager import BaseEmbeddingManager
+from embeddings.config import EmbeddingConfig
 
 
-class MessageEmbeddingManager:
+class MessageEmbeddingManager(BaseEmbeddingManager):
     """
     Manages FAISS-based semantic search for conversation messages
     """
     
-    def __init__(self, 
-                 embedding_model_name: str = 'all-MiniLM-L6-v2',
-                 index_dir: str = "./embeddings/message_indexes",
-                 max_message_length: int = 500,
-                 enable_persistence: bool = True):
+    def __init__(self, config: EmbeddingConfig = None):
         """
         Initialize the message embedding manager
         
         Args:
-            embedding_model_name: Name of the embedding model to use
-            index_dir: Directory for storing FAISS indexes
-            max_message_length: Maximum message length to embed (longer messages get truncated)
-            enable_persistence: Whether to enable index persistence
+            config: Configuration object
         """
-        self.embedding_model_name = embedding_model_name
-        self.embedding_model = SentenceTransformer(embedding_model_name)
-        self.max_message_length = max_message_length
-        self.enable_persistence = enable_persistence
+        self.config = config or EmbeddingConfig()
+        self.max_message_length = self.config.max_message_length
+        self.enable_persistence = self.config.enable_persistence
+        self.embedding_model_name = self.config.model_name
+        
+        # Initialize base class
+        super().__init__(
+            embedding_model_name=self.config.model_name,
+            index_dir=self.config.message_index_dir,
+            config=self.config
+        )
         
         # Index management
-        self.index: Optional[faiss.Index] = None
         self.message_mapping: Dict[int, Dict] = {}  # Maps FAISS index position to message data
         self.last_indexed_message_id = 0
         self.index_build_time = None
         
         # Persistence
-        if enable_persistence:
-            self.persistence_manager = FaissPersistenceManager(index_dir)
-            self.persistence_manager.index_file = self.persistence_manager.index_dir / "messages.faiss"
-            self.persistence_manager.metadata_file = self.persistence_manager.index_dir / "messages_metadata.json"
-            self.persistence_manager.mapping_file = self.persistence_manager.index_dir / "messages_mapping.json"
+        if self.enable_persistence:
+            self.persistence_manager = FaissPersistenceManager(self.config.message_index_dir)
+            self.persistence_manager.index_file = self.persistence_manager.index_dir / "index.faiss"
+            self.persistence_manager.metadata_file = self.persistence_manager.index_dir / "metadata.json"
+            self.persistence_manager.mapping_file = self.persistence_manager.index_dir / "mapping.json"
         
         # Initialize index
         self._initialize_index()
+    
+    def _build_index(self, vectors, mapping):
+        """Build FAISS index from vectors and mapping"""
+        d = vectors.shape[1]
+        index = faiss.IndexFlatL2(d)
+        index.add(vectors)
+        return index
+    
+    def _search_index(self, query_vector, k):
+        """Search index with query vector"""
+        return self.index.search(query_vector, k)
     
     def _initialize_index(self):
         """Initialize or load the FAISS index for messages"""
@@ -103,10 +115,10 @@ class MessageEmbeddingManager:
                 metadata = json.load(f)
             
             # Validate metadata
-            if metadata.get("embedding_model") != self.embedding_model_name:
+            if metadata.get("embedding_model") != self.config.model_name:
                 conversation_logger.log_system_event(
                     "message_index_model_mismatch",
-                    f"Index model {metadata.get('embedding_model')} != current {self.embedding_model_name}"
+                    f"Index model {metadata.get('embedding_model')} != current {self.config.model_name}"
                 )
                 return None, None, False
             
@@ -309,7 +321,7 @@ class MessageEmbeddingManager:
             metadata = {
                 "index_version": "1.0",
                 "created_at": datetime.now().isoformat(),
-                "embedding_model": self.embedding_model_name,
+                "embedding_model": self.config.model_name,
                 "message_count": len(messages),
                 "last_indexed_message_id": self.last_indexed_message_id,
                 "vector_dimension": self.index.d,
@@ -330,10 +342,10 @@ class MessageEmbeddingManager:
     
     def search_similar_messages(self, 
                                query: str, 
-                               k: int = 5,
+                               k: int = None,
                                exclude_conversation_ids: List[int] = None,
-                               min_similarity_score: float = 0.3,
-                               max_age_days: Optional[int] = 30) -> List[Dict]:
+                               min_similarity_score: float = None,
+                               max_age_days: Optional[int] = None) -> List[Dict]:
         """
         Search for semantically similar messages
         
@@ -347,6 +359,11 @@ class MessageEmbeddingManager:
         Returns:
             List of similar messages with similarity scores
         """
+        # Use config defaults if not provided
+        k = k or self.config.message_search_k
+        min_similarity_score = min_similarity_score or self.config.message_min_similarity
+        max_age_days = max_age_days or self.config.message_max_age_days
+        
         try:
             if not self.index or self.index.ntotal == 0:
                 return []
@@ -357,7 +374,7 @@ class MessageEmbeddingManager:
             self._update_index_incrementally()
             
             # Generate query embedding
-            query_embedding = self.embedding_model.encode([query]).astype('float32')
+            query_embedding = self._encode_query(query)
             
             # Search in FAISS (get more candidates for filtering)
             search_k = min(k * 3, self.index.ntotal)
@@ -418,7 +435,7 @@ class MessageEmbeddingManager:
             conversation_logger.log_error("message_search_failed", str(e), f"Failed to search similar messages for query: {query[:100]}")
             return []
     
-    def get_contextual_messages_for_response(self, user_query: str, current_conversation_id: int, max_context_pairs: int = 3) -> List[Dict]:
+    def get_contextual_messages_for_response(self, user_query: str, current_conversation_id: int, max_context_pairs: int = None) -> List[Dict]:
         """
         Get contextually relevant conversation pairs to enhance response generation
         
@@ -430,6 +447,9 @@ class MessageEmbeddingManager:
         Returns:
             List of conversation pairs (user + assistant) with context
         """
+        # Use config default if not provided
+        max_context_pairs = max_context_pairs or self.config.message_max_context_pairs
+        
         try:
             # Search for similar user messages, excluding current conversation
             similar_user_messages = self.search_similar_messages(
@@ -532,7 +552,7 @@ class MessageEmbeddingManager:
                 "total_messages_indexed": len(self.message_mapping),
                 "last_indexed_message_id": self.last_indexed_message_id,
                 "index_dimension": self.index.d if self.index else 0,
-                "embedding_model": self.embedding_model_name,
+                "embedding_model": self.config.model_name,
                 "index_build_time": self.index_build_time,
                 "persistence_enabled": self.enable_persistence
             }

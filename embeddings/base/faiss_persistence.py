@@ -14,7 +14,7 @@ class FaissPersistenceManager:
     Handles FAISS index persistence, validation, and synchronization with database
     """
     
-    def __init__(self, index_dir: str = "./embeddings/indexes"):
+    def __init__(self, index_dir: str = "./embeddings/indexes/tools"):
         self.index_dir = Path(index_dir)
         self.index_dir.mkdir(parents=True, exist_ok=True)
         

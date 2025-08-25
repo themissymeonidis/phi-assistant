@@ -1,6 +1,6 @@
 from model.model import Phi3Model
-from embeddings.tool_embeddings import ToolEmbeddingsManager
-from embeddings.message_embeddings import MessageEmbeddingManager
+from embeddings.managers.tool_embedding import ToolEmbeddingManager
+from embeddings.managers.message_embedding import MessageEmbeddingManager
 from tools.tools import Tools
 from utils.conversation_logger import conversation_logger
 from utils.input_handler import InputHandler
@@ -19,7 +19,7 @@ class Orchestrator:
         self.model.load_model();
 
         # Initialize tool embeddings manager
-        self.tool_embeddings = ToolEmbeddingsManager()
+        self.tool_embeddings = ToolEmbeddingManager()
         
         # Initialize message embedding manager
         self.message_embeddings = MessageEmbeddingManager()
