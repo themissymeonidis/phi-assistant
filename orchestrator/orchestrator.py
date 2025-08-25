@@ -6,6 +6,7 @@ from utils.conversation_logger import conversation_logger
 from utils.input_handler import InputHandler
 from utils.conversation_history import ConversationHistoryManager
 from commands.command_handler import CommandHandler
+from services.tool_selection_service import ToolSelectionService
 import time
 
 
@@ -33,6 +34,13 @@ class Orchestrator:
         # Initialize conversation history manager
         self.conversation_history = ConversationHistoryManager()
 
+        # Initialize tool selection service
+        self.tool_selection_service = ToolSelectionService(
+            tool_embeddings=self.tool_embeddings,
+            message_embeddings=self.message_embeddings,
+            conversation_history=self.conversation_history
+        )
+        
         # Initialize command handler
         self.command_handler = CommandHandler(
             conversation_history=self.conversation_history,
@@ -63,8 +71,8 @@ class Orchestrator:
             user_input = input_data['text']
             conversation_logger.log_user_input(user_input)
             
-            # Simple tool matching - check if tool and context have same tool_id
-            search_result = self._simple_tool_search(user_input)
+            # Use tool selection service to find appropriate tool
+            search_result = self.tool_selection_service.select_tool_with_context(user_input)
             
             if search_result['found_matching_tool']:
                 # Execute tool directly since tool_id matches context
@@ -91,46 +99,7 @@ class Orchestrator:
                     contextual_pairs=contextual_pairs
                 )
     
-    def _simple_tool_search(self, user_input: str) -> dict:
-        """
-        Simple tool search - if tool and context have same tool_id, execute tool directly.
-        
-        Args:
-            user_input: User's query
-            
-        Returns:
-            Dictionary with search results
-        """
-        # Get available tools
-        tool_candidates = self.tool_embeddings.query_tools_optimized(
-            user_input, 
-            max_candidates=10,
-            min_semantic_score=0.3
-        )
-        
-        # Get context from similar conversations
-        contextual_pairs = self.message_embeddings.get_contextual_messages_for_response(
-            user_query=user_input,
-            current_conversation_id=self.conversation_history.current_conversation_id or 0,
-            max_context_pairs=3
-        )
-        
-        # Check if any tool matches context tool_id
-        for tool in tool_candidates:
-            tool_id = tool.get('id')
-            for context in contextual_pairs:
-                if context.get('tool_id') == tool_id:
-                    return {
-                        'found_matching_tool': True,
-                        'tool': tool,
-                        'context': contextual_pairs
-                    }
-        
-        # No matching tool found
-        return {
-            'found_matching_tool': False,
-            'context': contextual_pairs
-        }
+
     
     
     def _generate_and_store_response(self, user_input: str, response_generator, tool_data: dict = None, tool_name: str = None, tool_result: dict = None, tool_id: int = None, contextual_pairs = None) -> str:
