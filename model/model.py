@@ -119,7 +119,7 @@ class Phi3Model:
             conversation_logger.log_error(f"{operation}_failed", str(e), f"After {max_attempts} attempts")
             raise RuntimeError(f"{operation.capitalize()} failed after {max_attempts} attempts: {e}")
     
-    def generate(self, prompt, max_tokens=512, temperature=0.7, retries=1):
+    def generate(self,system_prompt, prompt, max_tokens=512, temperature=0.7, retries=1):
         """Generate response for evaluation tasks (non-streaming)"""
         if not self.is_loaded:
             raise RuntimeError("Model not loaded. Call load_model() first.")
@@ -127,7 +127,7 @@ class Phi3Model:
         if not self.health_check():
             raise RuntimeError("Model is unhealthy. Please restart the application.")
             
-        formatted_prompt = f"<|user|>\n{prompt}<|end|>\n<|assistant|>"
+        formatted_prompt = f"<|system|>{system_prompt}<|end|>\n<|user|>\n{prompt}<|end|>\n<|assistant|>"
         
         # Log the prompt being sent
         conversation_logger.log_model_prompt("evaluation", prompt)
@@ -172,7 +172,6 @@ class Phi3Model:
         if not self.health_check():
             raise RuntimeError("Model is unhealthy. Please restart the application.")
             
-        formatted_prompt = f"<|user|>\n{prompt}<|end|>\n<|assistant|>"
         
         # Log the prompt being sent for streaming
         conversation_logger.log_model_prompt("chat_streaming", prompt)
@@ -180,7 +179,7 @@ class Phi3Model:
         try:
             # Create streaming generator
             stream = self.llm(
-                formatted_prompt,
+                prompt,
                 max_tokens=max_tokens,
                 temperature=temperature,
                 stop=["<|end|>"],
@@ -230,26 +229,22 @@ class Phi3Model:
         
         # Add embedding context if available
         if embed_context:
-            prompt_parts.append("**Similar Past Conversations:**")
+            prompt_parts.append("You are an assistant that answers user queries using available information. Use the information provided to respond naturally and directly. Do not mention the source of the information, do not refer to past conversations, and do not add disclaimers. Only provide clear, concise, natural answers.")
+            prompt_parts.append("<|system|>\n**Available Information:**")
             for i, context in enumerate(embed_context[:3], 1):  # Top 3 similar
                 prompt_parts.append(f"{i}. User: {context['user_message']}")
                 prompt_parts.append(f"   Assistant: {context['assistant_response']}")
-            prompt_parts.append("")
+            prompt_parts.append("<|end|>\n")
         
         # Add tool context if available
         if tool_context:
-            prompt_parts.append("**Tool Information:**")
+            prompt_parts.append("You are an assistant that answers user queries using available internal data. Use the provided information to respond naturally and directly. Do not mention how you got the information, do not mention any tools, and do not add disclaimers. Only provide a natural, concise answer.")
+            prompt_parts.append("<|system|>\n**Available Information:**")
             prompt_parts.append(f"Tool used: {tool_context['name']}")
             prompt_parts.append(f"Result: {tool_context['result']}")
-            prompt_parts.append("")
+            prompt_parts.append("<|end|>\n")
 
-        if embed_context or tool_context:
-            prompt_parts.append(f"**Current User Query:** {user_input}")
-            prompt_parts.append("Use the context above only if it is relevant; otherwise, respond naturally.")
-        else:
-            prompt_parts.append(user_input)
-            
-        
+        prompt_parts.append(f"<|user|>\n {user_input}<|end|>\n<|assistant|>")
         return "\n".join(prompt_parts)
 
 
@@ -363,30 +358,29 @@ class Phi3Model:
             
             # Determine conversation size and create appropriate prompt
             message_count = len(messages)
-            if message_count <= 10:
-                # Small conversation: 1-10 messages
-                summary_instruction = "Summarize this short conversation in one concise sentence that captures the main intent and topic. Output only the sentence, nothing else. Do not add punctuation or labels:"
-            elif message_count <= 30:
-                # Medium conversation: 11-30 messages  
-                summary_instruction = "Summarize this conversation briefly in 1-2 sentences. Include the main topics discussed and any important outcomes or requests. Output only the sentences, nothing else. Do not add punctuation or labels"
+            if message_count <= 30:
+                summary_system_prompt = (
+                "You are an assistant that summarizes conversations."
+                "Use the provided conversation information to generate a concise, single-sentence summary of the main intent and topic."
+                "Do not include punctuation, labels, emojis, formatting, or disclaimers."
+                "Do not mention tools or how information was obtained."
+                "Only output the summary sentence."
+            )
             else:
-                # Large conversation: 30+ messages
-                summary_instruction = "Analyze this long conversation and provide: A detailed summary (2-3 paragraphs) highlighting key topics, important decisions, and any unresolved questions. Output only the sentence, nothing else. Do not add punctuation or labels"
+                summary_system_prompt = (
+                "Analyze this long conversation and provide a detailed summary "
+                "(2-3 paragraphs) highlighting key topics, important decisions, "
+                "and any unresolved questions. Output only the summary, without "
+                "punctuation, labels, or disclaimers."
+            )
             
-            # Generate main conversation summary
-            summary_prompt = f"""{summary_instruction}
-
-{full_conversation}"""
-            
-            summary = self.generate(summary_prompt, max_tokens=300, temperature=0.5)
+            summary = self.generate(summary_system_prompt, full_conversation, max_tokens=300, temperature=0.5)
             
             # Generate conversation title
-            title_prompt = f"""Based on this conversation, Generate a concise, descriptive title (max 5 words). Output only the title, nothing else. Do not add punctuation or labels:
-
-{full_conversation[:1000]}
-"""
+            title_system_prompt = f"""You are an assistant that summarizes conversations. Use the provided information to generate a single concise title. Do not mention tools, sources, or past conversations. Output only the title as instructed, without labels, punctuation, or disclaimers."""
+            title_prompt = full_conversation[:1000]
             
-            title = self.generate(title_prompt, max_tokens=30, temperature=0.3).strip()
+            title = self.generate(title_system_prompt, title_prompt, max_tokens=30, temperature=0.3).strip()
             # Clean up title (remove quotes, extra text, and common AI additions)
             title = title.replace('"', '').replace("'", "").strip()
             
@@ -423,20 +417,12 @@ class Phi3Model:
             # Generate tool usage summary
             tool_summary = "No tools were used."
             if tools_used:
-                tools_text = []
+                tools_id = []
                 for tool in tools_used:
-                    tool_name = tool.get('name', 'Unknown')
-                    tool_result = str(tool.get('result', ''))[:200]
-                    tools_text.append(f"- {tool_name}: {tool_result}")
-                
-                tool_usage_text = "\n".join(tools_text)
-                tool_prompt = f"""Summarize the tool usage in this conversation:
+                    tools_id.append(tool.get('name', 'Unknown'))
 
-Tools used:
-{tool_usage_text}
-"""
-                
-                tool_summary = self.generate(tool_prompt, max_tokens=150, temperature=0.5)
+            if tools_id:
+                tool_summary = ', '.join(tools_id)
             
             return {
                 'title': title,
