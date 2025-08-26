@@ -94,37 +94,3 @@ class ToolSelectionService:
                 'context': [],
                 'selection_reason': f"Error during tool selection: {str(e)}"
             }
-    
-    def get_tool_candidates(self, user_input: str, max_candidates: int = 10) -> List[Dict]:
-        """
-        Get tool candidates for user input
-        
-        Args:
-            user_input: User's query
-            max_candidates: Maximum number of candidates to return
-            
-        Returns:
-            List of tool candidates with scores
-        """
-        return self.tool_embeddings.query_tools_optimized(
-            user_input,
-            max_candidates=max_candidates,
-            min_semantic_score=0.3
-        )
-    
-    def get_contextual_pairs(self, user_input: str, max_pairs: int = 3) -> List[Dict]:
-        """
-        Get contextual conversation pairs for user input
-        
-        Args:
-            user_input: User's query
-            max_pairs: Maximum number of context pairs to return
-            
-        Returns:
-            List of contextual conversation pairs
-        """
-        return self.message_embeddings.get_contextual_messages_for_response(
-            user_query=user_input,
-            current_conversation_id=self.conversation_history.current_conversation_id or 0,
-            max_context_pairs=max_pairs
-        )
