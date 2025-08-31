@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 from utils.database import db_manager
-from utils.conversation_logger import conversation_logger
+from logger import logger
 
 
 class ConversationHistoryManager:
@@ -47,7 +47,7 @@ class ConversationHistoryManager:
                 self.current_conversation_id = conversation_id
                 self.current_sequence_number = 0
                 
-                conversation_logger.log_system_event(
+                logger.log_system_event(
                     "conversation_started", 
                     f"New conversation created: {conversation_id} - {title}"
                 )
@@ -57,7 +57,7 @@ class ConversationHistoryManager:
                 raise Exception("Failed to get conversation ID from database")
                 
         except Exception as e:
-            conversation_logger.log_error("conversation_start_failed", str(e), "Failed to start new conversation")
+            logger.log_error("conversation_start_failed", str(e), "Failed to start new conversation")
             raise
     
     def add_message(self, 
@@ -122,7 +122,7 @@ class ConversationHistoryManager:
             if result and len(result) > 0:
                 message_id = result[0][0]
                 
-                conversation_logger.log_system_event(
+                logger.log_system_event(
                     "message_stored", 
                     f"Message {message_id} stored: {role} - {content[:50]}..."
                 )
@@ -132,7 +132,7 @@ class ConversationHistoryManager:
                 raise Exception("Failed to get message ID from database")
                 
         except Exception as e:
-            conversation_logger.log_error("message_store_failed", str(e), "Failed to store message")
+            logger.log_error("message_store_failed", str(e), "Failed to store message")
             raise
     
     def get_conversation_history(self, conversation_id: Optional[int] = None, limit: int = 100) -> List[Dict]:
@@ -183,7 +183,7 @@ class ConversationHistoryManager:
             return messages
             
         except Exception as e:
-            conversation_logger.log_error("conversation_retrieval_failed", str(e), "Failed to retrieve conversation history")
+            logger.log_error("conversation_retrieval_failed", str(e), "Failed to retrieve conversation history")
             return []
     
     def get_recent_conversations(self, limit: int = 10) -> List[Dict]:
@@ -227,7 +227,7 @@ class ConversationHistoryManager:
             return conversations
             
         except Exception as e:
-            conversation_logger.log_error("conversation_list_failed", str(e), "Failed to retrieve conversation list")
+            logger.log_error("conversation_list_failed", str(e), "Failed to retrieve conversation list")
             return []
     
     def end_current_conversation(self, summary: Optional[str] = None) -> bool:
@@ -256,7 +256,7 @@ class ConversationHistoryManager:
             
             db_manager.execute_query(update_sql, (json.dumps(metadata), self.current_conversation_id))
             
-            conversation_logger.log_system_event(
+            logger.log_system_event(
                 "conversation_ended", 
                 f"Conversation {self.current_conversation_id} ended"
             )
@@ -267,7 +267,7 @@ class ConversationHistoryManager:
             return True
             
         except Exception as e:
-            conversation_logger.log_error("conversation_end_failed", str(e), "Failed to end conversation")
+            logger.log_error("conversation_end_failed", str(e), "Failed to end conversation")
             return False
     
     def add_correction(self, original_message_id: int, corrected_content: str, metadata: Optional[Dict] = None) -> int:
@@ -377,7 +377,7 @@ class ConversationHistoryManager:
             return {}
             
         except Exception as e:
-            conversation_logger.log_error("analytics_failed", str(e), "Failed to generate conversation analytics")
+            logger.log_error("analytics_failed", str(e), "Failed to generate conversation analytics")
             return {}
     
     def process_conversation_exchange(self, user_input: str, assistant_response: str, 
@@ -428,7 +428,7 @@ class ConversationHistoryManager:
             }
             
         except Exception as e:
-            conversation_logger.log_error("exchange_processing_failed", str(e), "Failed to process conversation exchange")
+            logger.log_error("exchange_processing_failed", str(e), "Failed to process conversation exchange")
             raise
     
     def get_conversation_for_summary(self, conversation_id: int) -> Dict:
@@ -483,7 +483,7 @@ class ConversationHistoryManager:
             }
             
         except Exception as e:
-            conversation_logger.log_error("conversation_summary_fetch_failed", str(e), f"Failed to fetch conversation {conversation_id} for summary")
+            logger.log_error("conversation_summary_fetch_failed", str(e), f"Failed to fetch conversation {conversation_id} for summary")
             return {'conversation_id': conversation_id, 'messages': [], 'tools_used': []}
     
     def save_conversation_summary(self, conversation_id: int, title: str, summary: str, tool_usage_summary: str) -> bool:
@@ -512,13 +512,13 @@ class ConversationHistoryManager:
             )
             
             if affected_rows > 0:
-                conversation_logger.log_system_event(
+                logger.log_system_event(
                     "conversation_summary_saved",
                     f"Saved summary for conversation {conversation_id}: '{title}'"
                 )
                 return True
             else:
-                conversation_logger.log_error(
+                logger.log_error(
                     "conversation_summary_save_failed",
                     f"No conversation found with ID {conversation_id}",
                     "Update affected 0 rows"
@@ -526,5 +526,5 @@ class ConversationHistoryManager:
                 return False
                 
         except Exception as e:
-            conversation_logger.log_error("conversation_summary_save_failed", str(e), f"Failed to save summary for conversation {conversation_id}")
+            logger.log_error("conversation_summary_save_failed", str(e), f"Failed to save summary for conversation {conversation_id}")
             return False

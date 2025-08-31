@@ -3,9 +3,13 @@ from psycopg2 import pool
 from contextlib import contextmanager
 from typing import Optional, Dict, Any
 from config import config
-from utils.logger import setup_logger, DatabaseError
+from logger import logger
 
-logger = setup_logger(__name__)
+
+class DatabaseError(Exception):
+    """Custom exception for database-related errors"""
+    pass
+
 
 class DatabaseManager:
     """Manages database connections with pooling"""
@@ -26,9 +30,9 @@ class DatabaseManager:
                 user=config.database.user,
                 password=config.database.password
             )
-            logger.info("Database connection pool initialized")
+            logger.log_system_event("database_initialized", "Database connection pool initialized")
         except Exception as e:
-            logger.error(f"Failed to initialize database pool: {e}")
+            logger.log_error("database_pool_init_failed", str(e), "Failed to initialize database pool")
             raise DatabaseError(f"Database connection failed: {e}")
     
     @contextmanager
@@ -41,7 +45,7 @@ class DatabaseManager:
         except Exception as e:
             if conn:
                 conn.rollback()
-            logger.error(f"Database operation failed: {e}")
+            logger.log_error("database_operation_failed", str(e), "Database operation failed")
             raise DatabaseError(f"Database operation failed: {e}")
         finally:
             if conn:
@@ -81,7 +85,7 @@ class DatabaseManager:
         """Close the connection pool"""
         if self.pool:
             self.pool.closeall()
-            logger.info("Database connection pool closed")
+            logger.log_system_event("database_closed", "Database connection pool closed")
 
 # Global database manager instance
 db_manager = DatabaseManager()

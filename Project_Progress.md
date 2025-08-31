@@ -74,11 +74,18 @@ local_assistant/
 │   ├── Phi-3-mini-4k-instruct-q4.gguf  # Model weights (2.2GB)
 │   └── __init__.py
 ├── embeddings/
-│   ├── tool_embeddings.py       # Tool semantic search (FAISS)
-│   ├── message_embeddings.py    # Message semantic search
-│   ├── faiss_persistence.py     # Index persistence manager
-│   ├── indexes/                 # FAISS index storage
-│   ├── message_indexes/         # Message embedding storage
+│   ├── config.py                # Embedding configuration management (NEW)
+│   ├── base/
+│   │   ├── embedding_manager.py # Base embedding manager class (NEW)
+│   │   ├── faiss_persistence.py # Index persistence manager (MOVED)
+│   │   └── __init__.py
+│   ├── managers/
+│   │   ├── tool_embedding.py    # Tool semantic search (RENAMED)
+│   │   ├── message_embedding.py # Message semantic search (RENAMED)
+│   │   └── __init__.py
+│   ├── indexes/
+│   │   ├── tools/               # Tool index storage (REORGANIZED)
+│   │   └── messages/            # Message index storage (REORGANIZED)
 │   └── __init__.py
 ├── tools/
 │   ├── tools.py                 # Tool implementations (MINIMAL)
@@ -86,10 +93,14 @@ local_assistant/
 ├── utils/
 │   ├── database.py              # PostgreSQL connection manager
 │   ├── conversation_history.py  # Conversation persistence
-│   ├── conversation_logger.py   # Structured logging system
-│   ├── input_handler.py         # Input validation & sanitization
-│   ├── conversation_demo.py     # Demo functionality
-│   └── logger.py                # Basic logging utilities
+│   └── input_handler.py         # Input validation & sanitization
+├── logger/                      # REFACTORED LOGGING SYSTEM (NEW)
+│   ├── __init__.py             # Module exports
+│   ├── logger.py               # Main Logger class (RENAMED)
+│   └── config.py               # Logging configuration (NEW)
+├── services/
+│   ├── tool_selection_service.py # Tool selection logic (NEW)
+│   └── __init__.py
 ├── commands/
 │   ├── command_handler.py       # User command processing (REFACTORED)
 │   └── __init__.py
@@ -117,9 +128,10 @@ local_assistant/
 
 **Key Changes from Previous Version**:
 - **Removed redundant context management** - Now handled by model layer
-- **Simplified tool selection logic** - Uses `_simple_tool_search()` method
+- **Extracted tool selection logic** - Moved to `ToolSelectionService`
 - **Cleaner separation of concerns** - Focuses purely on orchestration
 - **Enhanced command handling** - All user interactions through CommandHandler
+- **Service-based architecture** - Uses dedicated services for business logic
 
 **Current Responsibilities**:
 - Main application entry point and control flow
@@ -131,7 +143,6 @@ local_assistant/
 ```python
 class Orchestrator:
     def __init__(self)                    # Initialize all components
-    def _simple_tool_search()             # Tool search with context matching
     def _generate_and_store_response()    # Core response generation pipeline
 ```
 
@@ -140,7 +151,33 @@ class Orchestrator:
 - Terminal-based interface only
 - Synchronous processing (no async support)
 
-### **2. AI Model Integration** (`model/model.py`)
+### **2. Services Layer** (`services/`)
+
+**Implementation Location**: `/home/muvox/local_assistant/services/`
+
+**Current Status**: ✅ **NEW** - Service-based architecture for business logic
+
+**Services Overview**:
+- **Tool Selection Service**: Handles intelligent tool selection based on user input and context
+- **Future Services**: Ready for conversation analysis, user intent detection, etc.
+
+#### **Tool Selection Service** (`services/tool_selection_service.py`)
+
+**Purpose**: Centralized tool selection logic with context-aware matching
+
+**Key Features**:
+```python
+class ToolSelectionService:
+    def select_tool_with_context()        # Main tool selection method
+```
+
+**Benefits**:
+- **Separation of Concerns**: Tool selection logic isolated from orchestration
+- **Reusability**: Can be used by other components
+- **Testability**: Easier to unit test in isolation
+- **Extensibility**: Easy to add new selection strategies
+
+### **3. AI Model Integration** (`model/model.py`)
 
 **Implementation Location**: `/home/muvox/local_assistant/model/model.py`
 
@@ -176,11 +213,59 @@ class Phi3Model:
 - Limited to 4K context window
 - No fine-tuning capabilities
 
-### **3. Tool Embeddings & Semantic Search** (`embeddings/tool_embeddings.py`)
+### **4. Embeddings System** (`embeddings/`)
 
-**Implementation Location**: `/home/muvox/local_assistant/embeddings/tool_embeddings.py`
+**Implementation Location**: `/home/muvox/local_assistant/embeddings/`
 
-**Current Status**: ✅ **PRODUCTION READY**
+**Current Status**: ✅ **REFACTORED** - New modular architecture with configuration management
+
+**New Architecture**:
+```
+embeddings/
+├── config.py                    # Configuration management (NEW)
+├── base/
+│   ├── embedding_manager.py     # Base class for common functionality (NEW)
+│   └── faiss_persistence.py     # Index persistence manager (MOVED)
+├── managers/
+│   ├── tool_embedding.py        # Tool semantic search (RENAMED)
+│   └── message_embedding.py     # Message semantic search (RENAMED)
+└── indexes/
+    ├── tools/                   # Tool index storage (REORGANIZED)
+    └── messages/                # Message index storage (REORGANIZED)
+```
+
+#### **Configuration Management** (`embeddings/config.py`)
+
+**Purpose**: Centralized configuration for all embedding components
+
+**Key Features**:
+```python
+@dataclass
+class EmbeddingConfig:
+    model_name: str = "all-MiniLM-L6-v2"
+    distance_threshold: float = 1.5
+    tool_search_k: int = 15
+    message_search_k: int = 10
+    # ... other configurable parameters
+```
+
+#### **Base Embedding Manager** (`embeddings/base/embedding_manager.py`)
+
+**Purpose**: Common functionality for all embedding managers
+
+**Key Features**:
+```python
+class BaseEmbeddingManager(ABC):
+    def _encode_query()           # Common query encoding
+    def _encode_texts()           # Common text encoding
+    def _create_empty_index()     # Common index creation
+```
+
+#### **Tool Embeddings Manager** (`embeddings/managers/tool_embedding.py`)
+
+**Implementation Location**: `/home/muvox/local_assistant/embeddings/managers/tool_embedding.py`
+
+**Current Status**: ✅ **REFACTORED** - Now inherits from BaseEmbeddingManager
 
 **Technical Architecture**:
 ```python
@@ -207,11 +292,11 @@ combined_score = (
 )
 ```
 
-### **4. Message Embeddings & Contextual Search** (`embeddings/message_embeddings.py`)
+#### **Message Embeddings Manager** (`embeddings/managers/message_embedding.py`)
 
-**Implementation Location**: `/home/muvox/local_assistant/embeddings/message_embeddings.py`
+**Implementation Location**: `/home/muvox/local_assistant/embeddings/managers/message_embedding.py`
 
-**Current Status**: ✅ **PRODUCTION READY**
+**Current Status**: ✅ **REFACTORED** - Now inherits from BaseEmbeddingManager
 
 **Purpose**: Provides semantic search over conversation history for contextual response generation
 
@@ -362,25 +447,64 @@ class InputHandler:
 
 **Command System**: Supports built-in commands like `help`, `clear`, `history`, `search`, `stats`, `embeddings`, `rebuild`, `summarise_conv`, `exit`
 
-### **9. Logging & Monitoring** (`utils/conversation_logger.py`)
+### **9. Logging & Monitoring** (`logger/`)
 
-**Implementation Location**: `/home/muvox/local_assistant/utils/conversation_logger.py`
+**Implementation Location**: `/home/muvox/local_assistant/logger/`
 
-**Current Status**: ✅ **PRODUCTION READY**
+**Current Status**: ✅ **REFACTORED** - Modular logging system with dedicated configuration
+
+**New Architecture**:
+```
+logger/
+├── __init__.py             # Module exports (Logger, logger, LoggerConfig)
+├── logger.py               # Main Logger class (RENAMED from ConversationLogger)
+└── config.py               # Logging configuration (NEW)
+```
+
+**Key Improvements**:
+- **Dedicated Module**: Moved from utils/ to dedicated logger/ directory
+- **Configuration Management**: All logging settings centralized in LoggerConfig class
+- **Three Log Files**: Separate files for different types of events:
+  - `prompts.log`: User inputs and model prompts/responses
+  - `system.log`: Tool executions, health checks, metrics, system events
+  - `exceptions.log`: Errors and exceptions with console output
+- **Simplified Naming**: Logger class with logger instance for consistency
 
 **Structured Logging Categories**:
 ```python
-# Event types tracked
+# Event types tracked across 3 log files
+# PROMPTS LOG:
 USER_INPUT           # All user queries and commands
-TOOL_SEARCH          # Semantic search performance
 MODEL_PROMPT         # Exact prompts sent to Phi-3
 MODEL_RESPONSE       # Complete model responses
+
+# SYSTEM LOG:
+TOOL_SEARCH          # Semantic search performance  
 TOOL_EVALUATION      # Decision logic with confidence
 TOOL_EXECUTION       # Tool runtime and results
 CONTEXT_MGMT         # Memory management events
 HEALTH_CHECK         # Model health monitoring
 SYSTEM_EVENT         # Application lifecycle
+
+# EXCEPTIONS LOG:
 ERROR               # Comprehensive error tracking
+EXCEPTION           # Exception handling with context
+```
+
+**Configuration Features**:
+```python
+class LoggerConfig:
+    # Log file names
+    PROMPTS_LOG_FILE = "prompts.log"
+    SYSTEM_LOG_FILE = "system.log" 
+    EXCEPTIONS_LOG_FILE = "exceptions.log"
+    
+    # Formatters and settings
+    DEFAULT_FORMATTER = "%(asctime)s | %(levelname)s | %(message)s"
+    DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+    
+    # Logger names and session markers
+    # ... all logging settings centralized
 ```
 
 ### **10. Command Processing** (`commands/command_handler.py`)
@@ -426,7 +550,7 @@ LOG_LEVEL                                     # Logging
 
 ## 🔄 **Current System Data Flow**
 
-### **Simplified Primary Interaction Flow** (After Refactoring):
+### **Enhanced Primary Interaction Flow** (After Service-Based Refactoring):
 
 1. **User Input** → `InputHandler.get_user_input()`
    - Sanitization and validation
@@ -436,10 +560,11 @@ LOG_LEVEL                                     # Logging
    - All commands and invalid input handled centrally
    - Clean separation from main conversation flow
 
-3. **Tool Search** → `Orchestrator._simple_tool_search()`
+3. **Tool Selection** → `ToolSelectionService.select_tool_with_context()`
    - **Parallel Execution**: Tool search + contextual message search
    - **Tool-Context Matching**: Check if tool_id matches context
-   - **Simplified Decision Logic**: Direct execution or context-only response
+   - **Service-Based Logic**: Centralized tool selection with enhanced logging
+   - **Selection Reasoning**: Provides explanation for tool selection decisions
 
 4. **Response Generation** → `Phi3Model.generate_with_context()`
    - **Context-Aware**: Always includes relevant context when available
@@ -450,32 +575,68 @@ LOG_LEVEL                                     # Logging
    - Message storage with tool_id linking
    - Conversation metadata updates
 
-### **Current Tool Selection Algorithm**:
+### **Enhanced Tool Selection Algorithm** (Service-Based):
 
 ```python
-# Stage 1: PARALLEL Searches
-tool_candidates = tool_embeddings.query_tools_optimized(user_query)
-contextual_pairs = message_embeddings.get_contextual_messages_for_response(user_query)
+# Stage 1: SERVICE-BASED SELECTION
+selection_result = tool_selection_service.select_tool_with_context(user_query)
 
-# Stage 2: Tool-Context Matching
-for tool in tool_candidates:
-    tool_id = tool.get('id')
-    for context in contextual_pairs:
-        if context.get('tool_id') == tool_id:
-            # DIRECT EXECUTION - Tool matches historical context
-            execute_tool_directly(tool, contextual_pairs)
-            return
-
-# Stage 3: Fallback Responses
-if contextual_pairs:
-    # CONTEXT-ONLY RESPONSE
-    generate_context_aware_response(contextual_pairs)
+# Stage 2: INTELLIGENT DECISION MAKING
+if selection_result['found_matching_tool']:
+    # DIRECT EXECUTION - Tool matches historical context
+    tool = selection_result['tool']
+    context = selection_result['context']
+    reason = selection_result['selection_reason']
+    execute_tool_with_context(tool, context, reason)
 else:
-    # DIRECT CHAT
-    generate_direct_response()
+    # CONTEXT-ONLY RESPONSE
+    context = selection_result['context']
+    reason = selection_result['selection_reason']
+    generate_context_aware_response(context, reason)
 ```
 
 ---
+
+## 🏗️ **Recent Architectural Improvements**
+
+### **🆕 Service-Based Architecture** (Latest Enhancement)
+
+**New Services Module**:
+- **`services/tool_selection_service.py`**: Centralized tool selection logic
+- **Future-Ready**: Architecture supports additional services (conversation analysis, user intent detection, etc.)
+
+**Benefits Achieved**:
+- **Separation of Concerns**: Business logic separated from orchestration
+- **Reusability**: Services can be used by multiple components
+- **Testability**: Easier to unit test individual services
+- **Maintainability**: Cleaner, more focused code
+- **Extensibility**: Easy to add new services and selection strategies
+
+### **🆕 Refactored Embeddings System**
+
+**New Structure**:
+```
+embeddings/
+├── config.py                    # Centralized configuration
+├── base/                        # Common functionality
+├── managers/                    # Specific implementations
+└── indexes/                     # Organized storage
+```
+
+**Key Improvements**:
+- **Configuration Management**: All settings centralized in `EmbeddingConfig`
+- **Base Class Architecture**: Common functionality in `BaseEmbeddingManager`
+- **Consistent Naming**: All files follow singular naming convention
+- **Better Organization**: Logical separation of concerns
+- **Reduced Duplication**: Common code shared through inheritance
+
+### **🆕 Enhanced Orchestrator**
+
+**Simplified Responsibilities**:
+- **Removed**: Tool selection logic (moved to service)
+- **Focused**: Pure orchestration of conversation flow
+- **Cleaner**: Better separation of concerns
+- **Service Integration**: Uses dedicated services for business logic
 
 ## 🚦 **Current System Status**
 
@@ -504,6 +665,8 @@ else:
 - ✅ **Centralized Commands**: All user interactions through CommandHandler
 - ✅ **Clean Architecture**: Better separation of concerns
 - ✅ **Improved Error Handling**: Common error handling methods
+- ✅ **Modular Logging System**: Dedicated logger/ module with 3-file architecture
+- ✅ **Centralized Logging Config**: All logging settings in LoggerConfig class
 
 ### **⚠️ Current Limitations**
 
@@ -525,7 +688,20 @@ else:
 
 ## 🎯 **Development Roadmap & Extension Points**
 
-### **Phase 1: Tool Ecosystem Expansion** (Immediate Priority)
+### **Phase 1: Service Layer Expansion** (Immediate Priority)
+
+**Completed ✅**:
+- **Tool Selection Service**: Centralized tool selection logic
+- **Embeddings Refactoring**: New modular architecture with configuration
+- **Orchestrator Simplification**: Cleaner separation of concerns
+- **Logging System Refactor**: Dedicated logger module with 3-file architecture and centralized configuration
+
+**Next Steps**:
+- **Conversation Analysis Service**: Analyze conversation patterns and user intent
+- **User Preference Service**: Learn and adapt to user preferences
+- **Tool Suggestion Service**: Suggest relevant tools when none detected
+
+### **Phase 2: Tool Ecosystem Expansion** (High Priority)
 
 **File Operations Tools**:
 ```python
@@ -933,7 +1109,9 @@ The Local Assistant represents a sophisticated and innovative approach to conver
 ### **Key Achievements**
 
 **Technical Innovation**:
-- **Architectural Excellence**: Clean, modular design with proper separation of concerns
+- **Service-Based Architecture**: Clean separation of business logic from orchestration
+- **Modular Embeddings System**: Configurable, extensible embedding management
+- **Advanced Logging Architecture**: Dedicated logger module with 3-file system and centralized configuration
 - **Performance Optimization**: Sub-millisecond tool search with intelligent caching
 - **Privacy Leadership**: Complete local operation ensuring data sovereignty
 - **Production Quality**: Professional-grade error handling, monitoring, and security
@@ -947,11 +1125,12 @@ The Local Assistant represents a sophisticated and innovative approach to conver
 ### **Development Priorities**
 
 **Immediate (Phase 1)**:
-1. **Tool Ecosystem Expansion**: Implement file operations, system information, and utility tools
-2. **Enhanced Prompt Engineering**: Better prompt templates and context-aware generation
-3. **Tool Suggestion System**: Model-driven tool suggestions for future learning
-4. **Test Coverage**: Add comprehensive unit and integration testing
-5. **Documentation**: Complete API documentation and deployment guides
+1. **Service Layer Expansion**: Add conversation analysis and user preference services
+2. **Tool Ecosystem Expansion**: Implement file operations, system information, and utility tools
+3. **Enhanced Prompt Engineering**: Better prompt templates and context-aware generation
+4. **Tool Suggestion System**: Model-driven tool suggestions for future learning
+5. **Test Coverage**: Add comprehensive unit and integration testing
+6. **Documentation**: Complete API documentation and deployment guides
 
 **Short-term (Phase 2)**:
 1. **Web Interface**: React-based frontend with real-time chat
@@ -978,11 +1157,11 @@ The Local Assistant represents a sophisticated and innovative approach to conver
 
 ---
 
-**Project Status**: ✅ **Advanced Production Prototype**  
-**Innovation Level**: 🚀 **High - Novel Hybrid AI Architecture**  
-**Readiness Level**: ⭐ **Ready for Tool Expansion & Interface Development**  
+**Project Status**: ✅ **Advanced Production Prototype with Service-Based Architecture**  
+**Innovation Level**: 🚀 **High - Novel Hybrid AI Architecture with Service Layer**  
+**Readiness Level**: ⭐ **Ready for Service Expansion & Tool Ecosystem Development**  
 **Last Updated**: January 2025  
-**Next Milestone**: Enhanced Tool Ecosystem with Prompt Engineering & Tool Suggestion System  
+**Next Milestone**: Service Layer Expansion with Conversation Analysis & User Preference Services  
 
 ---
 

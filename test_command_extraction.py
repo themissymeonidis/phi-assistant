@@ -15,7 +15,7 @@ def test_imports():
         from commands.command_handler import CommandHandler
         from utils.input_handler import InputHandler
         from utils.conversation_history import ConversationHistoryManager
-        from embeddings.message_embeddings import MessageEmbeddingManager
+        from embeddings.managers.message_embedding import MessageEmbeddingManager
         print("✅ All imports successful!")
         return True
     except ImportError as e:
@@ -28,7 +28,7 @@ def test_command_handler_creation():
         from commands.command_handler import CommandHandler
         from utils.input_handler import InputHandler
         from utils.conversation_history import ConversationHistoryManager
-        from embeddings.message_embeddings import MessageEmbeddingManager
+        from embeddings.managers.message_embedding import MessageEmbeddingManager
         
         # Mock objects for testing
         class MockConversationHistory:

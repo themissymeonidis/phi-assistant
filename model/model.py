@@ -1,14 +1,12 @@
 from llama_cpp import Llama
-import os, json, sys, time, logging
+import os, json, time
 from terminal.animations import Animations
-from utils.conversation_logger import conversation_logger
+from logger import logger
 try:
     import tiktoken
     TIKTOKEN_AVAILABLE = True
 except ImportError:
     TIKTOKEN_AVAILABLE = False
-
-logger = logging.getLogger(__name__)
 
 
 class Phi3Model:
@@ -66,7 +64,7 @@ class Phi3Model:
         try:
             if not self.is_loaded:
                 self.is_healthy = False
-                conversation_logger.log_health_check(False, "Model not loaded")
+                logger.log_health_check(False, "Model not loaded")
                 return False
             
             # Simple test inference
@@ -79,19 +77,19 @@ class Phi3Model:
             if test_response and test_response.get("choices"):
                 self.consecutive_failures = 0
                 self.is_healthy = True
-                conversation_logger.log_health_check(True, "Test inference successful")
-                logger.info("Model health check passed")
+                logger.log_health_check(True, "Test inference successful")
+                logger.log_system_event("model_health_check", "Model health check passed")
             else:
                 raise Exception("Empty response from model")
                 
         except Exception as e:
             self.consecutive_failures += 1
-            logger.error(f"Model health check failed: {e}")
-            conversation_logger.log_health_check(False, f"Test failed: {str(e)}")
+            logger.log_error("model_health_check_failed", str(e), "Model health check failed")
+            logger.log_health_check(False, f"Test failed: {str(e)}")
             
             if self.consecutive_failures >= self.max_failures:
                 self.is_healthy = False
-                logger.error("Model marked as unhealthy after consecutive failures")
+                logger.log_error("model_unhealthy", "Model marked as unhealthy", "After consecutive failures")
         
         self.last_health_check = current_time
         return self.is_healthy
@@ -107,8 +105,8 @@ class Phi3Model:
     def _handle_generation_error(self, e, attempt, max_attempts, operation="generation"):
         """Common error handling for generation methods"""
         self.consecutive_failures += 1
-        logger.warning(f"{operation.capitalize()} attempt {attempt + 1} failed: {e}")
-        conversation_logger.log_retry_attempt(attempt + 1, max_attempts, str(e))
+        logger.log_system_event("generation_retry", f"{operation.capitalize()} attempt {attempt + 1} failed: {e}")
+        logger.log_retry_attempt(attempt + 1, max_attempts, str(e))
         
         if attempt < max_attempts - 1:
             time.sleep(1)  # Brief pause before retry
@@ -116,7 +114,7 @@ class Phi3Model:
             # Final attempt failed
             if self.consecutive_failures >= self.max_failures:
                 self.is_healthy = False
-            conversation_logger.log_error(f"{operation}_failed", str(e), f"After {max_attempts} attempts")
+            logger.log_error(f"{operation}_failed", str(e), f"After {max_attempts} attempts")
             raise RuntimeError(f"{operation.capitalize()} failed after {max_attempts} attempts: {e}")
     
     def generate(self,system_prompt, prompt, max_tokens=512, temperature=0.7, retries=1):
@@ -130,7 +128,7 @@ class Phi3Model:
         formatted_prompt = f"<|system|>{system_prompt}<|end|>\n<|user|>\n{prompt}<|end|>\n<|assistant|>"
         
         # Log the prompt being sent
-        conversation_logger.log_model_prompt("evaluation", prompt)
+        logger.log_model_prompt("evaluation", prompt)
         
         start_time = time.time()
         
@@ -149,13 +147,13 @@ class Phi3Model:
                     response_time = time.time() - start_time
                     
                     # Log successful response
-                    conversation_logger.log_model_response(
+                    logger.log_model_response(
                         "evaluation", 
                         response_text, 
                         streaming=False, 
                         tokens=self.count_tokens(response_text)
                     )
-                    conversation_logger.log_system_event("generation_complete", f"Response time: {response_time:.2f}s")
+                    logger.log_system_event("generation_complete", f"Response time: {response_time:.2f}s")
                     
                     return response_text
                 else:
@@ -174,7 +172,7 @@ class Phi3Model:
             
         
         # Log the prompt being sent for streaming
-        conversation_logger.log_model_prompt("chat_streaming", prompt)
+        logger.log_model_prompt("chat_streaming", prompt)
         
         try:
             # Create streaming generator
@@ -199,7 +197,7 @@ class Phi3Model:
             self.consecutive_failures = 0
             
             # Log the complete streamed response
-            conversation_logger.log_model_response(
+            logger.log_model_response(
                 "chat_streaming", 
                 full_response, 
                 streaming=True, 
@@ -229,8 +227,8 @@ class Phi3Model:
         
         # Add embedding context if available
         if embed_context:
-            prompt_parts.append("You are an assistant that answers user queries using available information. Use the information provided to respond naturally and directly. Do not mention the source of the information, do not refer to past conversations, and do not add disclaimers. Only provide clear, concise, natural answers.")
-            prompt_parts.append("<|system|>\n**Available Information:**")
+            prompt_parts.append("<|system|>\nYou are an assistant that answers user queries using available information. Use the information provided to respond naturally and directly. Do not mention the source of the information, do not refer to past conversations, and do not add disclaimers. Only provide clear, concise, natural answers.\n")
+            prompt_parts.append("**Available Information:**")
             for i, context in enumerate(embed_context[:3], 1):  # Top 3 similar
                 prompt_parts.append(f"{i}. User: {context['user_message']}")
                 prompt_parts.append(f"   Assistant: {context['assistant_response']}")
@@ -238,8 +236,8 @@ class Phi3Model:
         
         # Add tool context if available
         if tool_context:
-            prompt_parts.append("You are an assistant that answers user queries using available internal data. Use the provided information to respond naturally and directly. Do not mention how you got the information, do not mention any tools, and do not add disclaimers. Only provide a natural, concise answer.")
-            prompt_parts.append("<|system|>\n**Available Information:**")
+            prompt_parts.append("<|system|>\nYou are an assistant that answers user queries using available internal data. Use the provided information to respond naturally and directly. Do not mention how you got the information, do not mention any tools, and do not add disclaimers. Only provide a natural, concise answer.\n")
+            prompt_parts.append("**Available Information:**")
             prompt_parts.append(f"Tool used: {tool_context['name']}")
             prompt_parts.append(f"Result: {tool_context['result']}")
             prompt_parts.append("<|end|>\n")
@@ -295,7 +293,7 @@ class Phi3Model:
                 }
                 
                 # Log the tool evaluation with all details
-                conversation_logger.log_tool_evaluation(
+                logger.log_tool_evaluation(
                     user_query, 
                     tool['name'], 
                     decision, 
@@ -312,7 +310,7 @@ class Phi3Model:
                        "reasoning": "Failed to parse JSON response", "uncertainty": 0.9}
                 
                 # Log the failed evaluation
-                conversation_logger.log_tool_evaluation(
+                logger.log_tool_evaluation(
                     user_query, 
                     tool['name'], 
                     False, 
@@ -320,7 +318,7 @@ class Phi3Model:
                     "Failed to parse JSON response", 
                     evaluation_time
                 )
-                conversation_logger.log_error("evaluation_parse_failed", f"Raw output: {raw_output}")
+                logger.log_error("evaluation_parse_failed", f"Raw output: {raw_output}")
                 
                 return evaluation_result
         
@@ -431,7 +429,7 @@ class Phi3Model:
             }
             
         except Exception as e:
-            logger.error(f"Failed to summarize conversation: {e}")
+            logger.log_error("conversation_summarization_failed", str(e), "Failed to summarize conversation")
             return {
                 'title': 'Conversation Summary',
                 'summary': 'Failed to generate conversation summary.',

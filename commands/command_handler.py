@@ -1,5 +1,5 @@
 import time
-from utils.conversation_logger import conversation_logger
+from logger import logger
 from utils.input_handler import InputHandler
 
 
@@ -58,14 +58,14 @@ class CommandHandler:
         help_text += "\n  rebuild - Rebuild message embedding index"
         help_text += "\n  summarise_conv [ID] - Summarise a conversation by ID (interactive if no ID)"
         print(help_text)
-        conversation_logger.log_system_event("help_requested", "User requested help")
+        logger.log_system_event("help_requested", "User requested help")
     
     def _clear_conversation_history(self):
         """Clear the current conversation history"""
         if self.model and hasattr(self.model, 'conversation_history'):
             self.model.conversation_history.clear()
         print("🧹 Conversation history cleared!")
-        conversation_logger.log_system_event("history_cleared", "User cleared conversation history")
+        logger.log_system_event("history_cleared", "User cleared conversation history")
     
     def _show_conversation_history(self):
         """Show current conversation history"""
@@ -96,7 +96,7 @@ class CommandHandler:
                     
         except Exception as e:
             print(f"❌ Error retrieving history: {e}")
-            conversation_logger.log_error("history_display_failed", str(e), "Failed to display conversation history")
+            logger.log_error("history_display_failed", str(e), "Failed to display conversation history")
     
     def _show_recent_conversations(self):
         """Show recent conversations summary"""
@@ -122,7 +122,7 @@ class CommandHandler:
                 
         except Exception as e:
             print(f"❌ Error retrieving conversations: {e}")
-            conversation_logger.log_error("conversations_display_failed", str(e), "Failed to display conversations")
+            logger.log_error("conversations_display_failed", str(e), "Failed to display conversations")
     
     def _show_conversation_stats(self):
         """Show conversation analytics"""
@@ -144,7 +144,7 @@ class CommandHandler:
             
         except Exception as e:
             print(f"❌ Error retrieving statistics: {e}")
-            conversation_logger.log_error("stats_display_failed", str(e), "Failed to display conversation statistics")
+            logger.log_error("stats_display_failed", str(e), "Failed to display conversation statistics")
     
     def _search_similar_messages(self):
         """Search for similar messages interactively"""
@@ -183,7 +183,7 @@ class CommandHandler:
             
         except Exception as e:
             print(f"❌ Error searching messages: {e}")
-            conversation_logger.log_error("message_search_failed", str(e), "Failed to search similar messages")
+            logger.log_error("message_search_failed", str(e), "Failed to search similar messages")
     
     def _show_embedding_stats(self):
         """Show message embedding statistics"""
@@ -218,7 +218,7 @@ class CommandHandler:
             
         except Exception as e:
             print(f"❌ Error retrieving embedding stats: {e}")
-            conversation_logger.log_error("embedding_stats_failed", str(e), "Failed to display embedding statistics")
+            logger.log_error("embedding_stats_failed", str(e), "Failed to display embedding statistics")
     
     def _rebuild_message_index(self):
         """Rebuild the message embedding index"""
@@ -242,14 +242,14 @@ class CommandHandler:
             print(f"   Messages indexed: {messages_count}")
             print(f"   Rebuild time: {rebuild_time:.2f}s")
             
-            conversation_logger.log_system_event(
+            logger.log_system_event(
                 "message_index_manual_rebuild",
                 f"User initiated index rebuild: {messages_count} messages, {rebuild_time:.2f}s"
             )
             
         except Exception as e:
             print(f"❌ Error rebuilding index: {e}")
-            conversation_logger.log_error("index_rebuild_failed", str(e), "Failed to rebuild message index")
+            logger.log_error("index_rebuild_failed", str(e), "Failed to rebuild message index")
     
     def _summarise_conversation(self, full_input: str = None):
         """Interactive conversation summarization"""
@@ -368,7 +368,7 @@ class CommandHandler:
                 
                 if success:
                     print("✅ Summary saved successfully!")
-                    conversation_logger.log_system_event(
+                    logger.log_system_event(
                         "conversation_summarized",
                         f"User summarized conversation {conv_id}: '{summary_result['title']}'"
                     )
@@ -379,12 +379,12 @@ class CommandHandler:
             
         except Exception as e:
             print(f"❌ Error during summarization: {e}")
-            conversation_logger.log_error("conversation_summarization_failed", str(e), "User-initiated conversation summarization failed")
+            logger.log_error("conversation_summarization_failed", str(e), "User-initiated conversation summarization failed")
     
     def _handle_exit(self):
         """Handle exit command and return exit status"""
         # End current conversation before exiting
         self.conversation_history.end_current_conversation("User ended session")
         print("Goodbye!")
-        conversation_logger.log_system_event("session_ended", "User requested exit")
+        logger.log_system_event("session_ended", "User requested exit")
         return {'should_exit': True, 'reason': 'user_exit'}

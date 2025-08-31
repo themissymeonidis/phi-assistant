@@ -1,5 +1,5 @@
 import re
-from utils.conversation_logger import conversation_logger
+from logger import logger
 
 class InputHandler:
     """Handle and validate user input with proper sanitization"""
@@ -31,7 +31,7 @@ class InputHandler:
             raw_input = input(prompt)
             return self.process_input(raw_input)
         except (KeyboardInterrupt, EOFError):
-            conversation_logger.log_system_event("keyboard_interrupt", "User interrupted with Ctrl+C")
+            logger.log_system_event("keyboard_interrupt", "User interrupted with Ctrl+C")
             return {'text': '', 'type': 'exit', 'action': 'interrupt'}
     
     def process_input(self, raw_input: str) -> dict:
@@ -42,12 +42,12 @@ class InputHandler:
         
         # Check for empty input
         if not cleaned_input:
-            conversation_logger.log_system_event("empty_input", "User provided empty input")
+            logger.log_system_event("empty_input", "User provided empty input")
             return {'text': '', 'type': 'invalid', 'action': 'empty'}
         
         # Check input length
         if len(cleaned_input) > self.max_input_length:
-            conversation_logger.log_system_event("input_too_long", f"Input length: {len(cleaned_input)}")
+            logger.log_system_event("input_too_long", f"Input length: {len(cleaned_input)}")
             return {'text': cleaned_input[:self.max_input_length], 'type': 'invalid', 'action': 'too_long'}
         
         # Check for exit commands
@@ -74,7 +74,7 @@ class InputHandler:
         
         # Check minimum length for regular messages
         if len(cleaned_input) < self.min_input_length:
-            conversation_logger.log_system_event("input_too_short", f"Input: '{cleaned_input}'")
+            logger.log_system_event("input_too_short", f"Input: '{cleaned_input}'")
             return {'text': cleaned_input, 'type': 'invalid', 'action': 'too_short'}
         
         # Valid message input

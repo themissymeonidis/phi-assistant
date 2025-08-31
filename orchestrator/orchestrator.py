@@ -2,7 +2,7 @@ from model.model import Phi3Model
 from embeddings.managers.tool_embedding import ToolEmbeddingManager
 from embeddings.managers.message_embedding import MessageEmbeddingManager
 from tools.tools import Tools
-from utils.conversation_logger import conversation_logger
+from logger import logger
 from utils.input_handler import InputHandler
 from utils.conversation_history import ConversationHistoryManager
 from commands.command_handler import CommandHandler
@@ -49,7 +49,7 @@ class Orchestrator:
             model=self.model
         )
 
-        conversation_logger.log_system_event("session_started", "Orchestrator initialized and ready")
+        logger.log_system_event("session_started", "Orchestrator initialized and ready")
         print("🤖 Local Assistant Ready! Type 'help' for commands or ask me anything.")
         
         while True:
@@ -69,7 +69,7 @@ class Orchestrator:
             
             # Process valid message
             user_input = input_data['text']
-            conversation_logger.log_user_input(user_input)
+            logger.log_user_input(user_input)
             
             # Use tool selection service to find appropriate tool
             search_result = self.tool_selection_service.select_tool_with_context(user_input)
@@ -78,7 +78,7 @@ class Orchestrator:
                 # Execute tool directly since tool_id matches context
                 tool_data = search_result['tool']
                 
-                conversation_logger.log_system_event(
+                logger.log_system_event(
                     "tool_match_found", 
                     f"Executing tool: {tool_data['name']} - tool_id matches context"
                 )
@@ -92,7 +92,7 @@ class Orchestrator:
             else:
                 # No tool match found, generate regular response
                 contextual_pairs = search_result.get('context', [])
-                conversation_logger.log_system_event("no_tool_match", "No matching tools found, using regular chat")
+                logger.log_system_event("no_tool_match", "No matching tools found, using regular chat")
                 assistant_response = self._generate_and_store_response(
                     user_input,
                     None,
@@ -127,11 +127,11 @@ class Orchestrator:
                 tool_id = tool_data["id"]
                 
                 # Log tool execution
-                conversation_logger.log_tool_execution(
+                logger.log_tool_execution(
                     tool_data["name"], 
                     tool_result,
                 )
-                conversation_logger.log_system_event("tool_response_start", f"Using tool: {tool_data['name']}")
+                logger.log_system_event("tool_response_start", f"Using tool: {tool_data['name']}")
 
             # Store the user message first and get its ID
             user_message_id = self.conversation_history.add_message(
@@ -191,7 +191,7 @@ class Orchestrator:
                 metadata=metadata
             )
             
-            conversation_logger.log_system_event(
+            logger.log_system_event(
                 "conversation_stored", 
                 f"Exchange stored: conversation_id={self.conversation_history.current_conversation_id}, "
                 f"user_msg={user_message_id}, assistant_msg={assistant_message_id}, tool_msg={tool_message_id}, "
@@ -200,7 +200,7 @@ class Orchestrator:
             return assistant_response
             
         except Exception as e:
-            conversation_logger.log_error("conversation_storage_failed", str(e), "Failed to store conversation exchange")
+            logger.log_error("conversation_storage_failed", str(e), "Failed to store conversation exchange")
             # Still try to generate response even if storage fails
             try:
                 return self.model.generate_with_context(user_input, max_tokens=512, temperature=0.7)

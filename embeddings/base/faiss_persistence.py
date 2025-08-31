@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Tuple, Optional, Any
-from utils.conversation_logger import conversation_logger
+from logger import logger
 from utils.database import db_manager
 
 
@@ -62,7 +62,7 @@ class FaissPersistenceManager:
             return None
             
         except Exception as e:
-            conversation_logger.log_error("db_timestamp_query_failed", str(e), "Failed to query database timestamps")
+            logger.log_error("db_timestamp_query_failed", str(e), "Failed to query database timestamps")
             return None
     
     def save_index_with_metadata(self, 
@@ -107,7 +107,7 @@ class FaissPersistenceManager:
             with open(self.metadata_file, 'w') as f:
                 json.dump(metadata, f, indent=2)
             
-            conversation_logger.log_system_event(
+            logger.log_system_event(
                 "faiss_index_saved", 
                 f"Saved index with {len(tools_data)} tools to {self.index_file}"
             )
@@ -115,7 +115,7 @@ class FaissPersistenceManager:
             return True
             
         except Exception as e:
-            conversation_logger.log_error("faiss_index_save_failed", str(e), "Failed to save FAISS index")
+            logger.log_error("faiss_index_save_failed", str(e), "Failed to save FAISS index")
             return False
     
     def load_index_with_validation(self, tools_data: Dict, embedding_model: str = "all-MiniLM-L6-v2") -> Tuple[Optional[faiss.Index], Optional[Dict], bool]:
@@ -135,7 +135,7 @@ class FaissPersistenceManager:
         try:
             # Check if all required files exist
             if not all(f.exists() for f in [self.index_file, self.metadata_file, self.mapping_file]):
-                conversation_logger.log_system_event("faiss_index_missing", "Index files not found, will rebuild")
+                logger.log_system_event("faiss_index_missing", "Index files not found, will rebuild")
                 return None, None, False
             
             # Load and validate metadata
@@ -172,7 +172,7 @@ class FaissPersistenceManager:
             
             # If validation issues found, return invalid
             if validation_issues:
-                conversation_logger.log_system_event(
+                logger.log_system_event(
                     "faiss_index_invalid", 
                     f"Index validation failed: {'; '.join(validation_issues)}"
                 )
@@ -191,7 +191,7 @@ class FaissPersistenceManager:
                 return None, None, False
             
             # Success - index is valid and current
-            conversation_logger.log_system_event(
+            logger.log_system_event(
                 "faiss_index_loaded", 
                 f"Successfully loaded valid index with {len(tool_mapping)} tools"
             )
@@ -199,7 +199,7 @@ class FaissPersistenceManager:
             return index, tool_mapping, True
             
         except Exception as e:
-            conversation_logger.log_error("faiss_index_load_failed", str(e), "Failed to load FAISS index")
+            logger.log_error("faiss_index_load_failed", str(e), "Failed to load FAISS index")
             return None, None, False
     
     def cleanup_old_indexes(self, keep_backups: int = 2) -> None:
@@ -219,10 +219,10 @@ class FaissPersistenceManager:
                 backup_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
                 for old_backup in backup_files[keep_backups:]:
                     old_backup.unlink()
-                    conversation_logger.log_system_event("faiss_backup_cleaned", f"Removed old backup: {old_backup.name}")
+                    logger.log_system_event("faiss_backup_cleaned", f"Removed old backup: {old_backup.name}")
                     
         except Exception as e:
-            conversation_logger.log_error("faiss_cleanup_failed", str(e), "Failed to cleanup old index files")
+            logger.log_error("faiss_cleanup_failed", str(e), "Failed to cleanup old index files")
     
     def get_index_stats(self) -> Dict[str, Any]:
         """

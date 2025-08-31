@@ -2,7 +2,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 import faiss, time
 from terminal.animations import Animations
-from utils.conversation_logger import conversation_logger
+from logger import logger
 from utils.database import db_manager
 from embeddings.base.faiss_persistence import FaissPersistenceManager
 from embeddings.base.embedding_manager import BaseEmbeddingManager
@@ -188,7 +188,7 @@ class ToolEmbeddingManager(BaseEmbeddingManager):
         search_time = time.time() - start_time
         
         # Enhanced logging with filtering statistics
-        conversation_logger.log_faiss_search(
+        logger.log_faiss_search(
             user_query, 
             filtered_candidates, 
             search_time
@@ -242,7 +242,7 @@ class ToolEmbeddingManager(BaseEmbeddingManager):
         
         try:
             results = db_manager.execute_query(query)
-            conversation_logger.log_system_event("db_tools_loaded", f"Loaded {len(results)} active tools from database")
+            logger.log_system_event("db_tools_loaded", f"Loaded {len(results)} active tools from database")
             
             return {
                 row[1]: {  # row[1] is the 'name' column
@@ -255,7 +255,7 @@ class ToolEmbeddingManager(BaseEmbeddingManager):
             }
             
         except Exception as e:
-            conversation_logger.log_error("db_tools_load_failed", str(e), "Failed to load tools from database")
+            logger.log_error("db_tools_load_failed", str(e), "Failed to load tools from database")
             # Return empty dict as fallback
             return {}
     
@@ -310,7 +310,7 @@ class ToolEmbeddingManager(BaseEmbeddingManager):
         
         if not self.enable_persistence or not self.tool_dict:
             # Fallback to direct rebuild
-            conversation_logger.log_system_event("tool_embeddings_persistence_disabled", "Building index from scratch")
+            logger.log_system_event("tool_embeddings_persistence_disabled", "Building index from scratch")
             self._build_index_from_scratch()
             return
         
@@ -328,14 +328,14 @@ class ToolEmbeddingManager(BaseEmbeddingManager):
             # Convert string keys back to integers for tool_mapping
             self.tool_mapping = {int(k): v for k, v in loaded_mapping.items()}
             
-            conversation_logger.log_system_event(
+            logger.log_system_event(
                 "tool_embeddings_loaded_from_disk", 
                 f"Loaded persisted index with {len(self.tool_mapping)} tools"
             )
             
         else:
             # Rebuild and save
-            conversation_logger.log_system_event(
+            logger.log_system_event(
                 "tool_embeddings_rebuild_required", 
                 "Rebuilding index due to validation failure or missing files"
             )
@@ -362,12 +362,12 @@ class ToolEmbeddingManager(BaseEmbeddingManager):
             )
             
             if success:
-                conversation_logger.log_system_event(
+                logger.log_system_event(
                     "tool_embeddings_persisted", 
                     f"Successfully persisted index with {len(self.tool_dict)} tools"
                 )
             else:
-                conversation_logger.log_error(
+                logger.log_error(
                     "tool_embeddings_persistence_failed", 
                     "Failed to persist index to disk", 
                     "Index will be rebuilt on next startup"
@@ -380,7 +380,7 @@ class ToolEmbeddingManager(BaseEmbeddingManager):
         Args:
             save_to_disk: Whether to persist the rebuilt index
         """
-        conversation_logger.log_system_event("tool_embeddings_manual_rebuild", "Manually rebuilding tool embeddings index")
+        logger.log_system_event("tool_embeddings_manual_rebuild", "Manually rebuilding tool embeddings index")
         
         # Reload tools from database
         self.tool_dict = self.load_db_tools()
@@ -392,7 +392,7 @@ class ToolEmbeddingManager(BaseEmbeddingManager):
         if save_to_disk and self.enable_persistence:
             self._save_index_to_disk()
         
-        conversation_logger.log_system_event(
+        logger.log_system_event(
             "tool_embeddings_rebuild_complete", 
             f"Index rebuilt with {len(self.tool_dict)} tools"
         )

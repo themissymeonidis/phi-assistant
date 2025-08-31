@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from sentence_transformers import SentenceTransformer
 
 from utils.database import db_manager
-from utils.conversation_logger import conversation_logger
+from logger import logger
 from embeddings.base.faiss_persistence import FaissPersistenceManager
 from embeddings.base.embedding_manager import BaseEmbeddingManager
 from embeddings.config import EmbeddingConfig
@@ -82,7 +82,7 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
                     self.message_mapping = {int(k): v for k, v in loaded_mapping.items()}
                     self.last_indexed_message_id = max([msg['id'] for msg in self.message_mapping.values()]) if self.message_mapping else 0
                     
-                    conversation_logger.log_system_event(
+                    logger.log_system_event(
                         "message_index_loaded",
                         f"Loaded message index with {len(self.message_mapping)} messages"
                     )
@@ -95,7 +95,7 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
             self._build_index_from_scratch()
             
         except Exception as e:
-            conversation_logger.log_error("message_index_init_failed", str(e), "Failed to initialize message index")
+            logger.log_error("message_index_init_failed", str(e), "Failed to initialize message index")
             # Create empty index as fallback
             self._create_empty_index()
     
@@ -116,7 +116,7 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
             
             # Validate metadata
             if metadata.get("embedding_model") != self.config.model_name:
-                conversation_logger.log_system_event(
+                logger.log_system_event(
                     "message_index_model_mismatch",
                     f"Index model {metadata.get('embedding_model')} != current {self.config.model_name}"
                 )
@@ -131,13 +131,13 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
             return index, mapping, True
             
         except Exception as e:
-            conversation_logger.log_error("message_index_load_failed", str(e), "Failed to load persisted message index")
+            logger.log_error("message_index_load_failed", str(e), "Failed to load persisted message index")
             return None, None, False
     
     def _build_index_from_scratch(self):
         """Build FAISS index from all messages in database"""
         try:
-            conversation_logger.log_system_event("message_index_build_start", "Building message index from scratch")
+            logger.log_system_event("message_index_build_start", "Building message index from scratch")
             start_time = time.time()
             
             # Get all messages suitable for embedding
@@ -164,13 +164,13 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
             if self.enable_persistence:
                 self._save_index_to_disk(messages)
             
-            conversation_logger.log_system_event(
+            logger.log_system_event(
                 "message_index_build_complete",
                 f"Built message index: {len(messages)} messages, {self.index_build_time:.2f}s"
             )
             
         except Exception as e:
-            conversation_logger.log_error("message_index_build_failed", str(e), "Failed to build message index")
+            logger.log_error("message_index_build_failed", str(e), "Failed to build message index")
             self._create_empty_index()
     
     def _fetch_messages_for_embedding(self, since_message_id: int = 0) -> List[Dict]:
@@ -226,7 +226,7 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
             return messages
             
         except Exception as e:
-            conversation_logger.log_error("message_fetch_failed", str(e), "Failed to fetch messages for embedding")
+            logger.log_error("message_fetch_failed", str(e), "Failed to fetch messages for embedding")
             return []
     
     def _generate_embeddings_for_messages(self, messages: List[Dict]) -> np.ndarray:
@@ -258,7 +258,7 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
             return np.array(embeddings, dtype='float32')
             
         except Exception as e:
-            conversation_logger.log_error("embedding_generation_failed", str(e), "Failed to generate message embeddings")
+            logger.log_error("embedding_generation_failed", str(e), "Failed to generate message embeddings")
             raise
     
     def _create_empty_index(self):
@@ -269,7 +269,7 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
         self.message_mapping = {}
         self.last_indexed_message_id = 0
         
-        conversation_logger.log_system_event("empty_message_index_created", "Created empty message index")
+        logger.log_system_event("empty_message_index_created", "Created empty message index")
     
     def _update_index_incrementally(self):
         """Update index with new messages since last build"""
@@ -299,13 +299,13 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
                 all_messages = list(self.message_mapping.values())
                 self._save_index_to_disk(all_messages)
             
-            conversation_logger.log_system_event(
+            logger.log_system_event(
                 "message_index_updated",
                 f"Added {len(new_messages)} new messages to index"
             )
             
         except Exception as e:
-            conversation_logger.log_error("message_index_update_failed", str(e), "Failed to update message index")
+            logger.log_error("message_index_update_failed", str(e), "Failed to update message index")
     
     def _save_index_to_disk(self, messages: List[Dict]):
         """Save index and metadata to disk"""
@@ -332,13 +332,13 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
             with open(self.persistence_manager.metadata_file, 'w') as f:
                 json.dump(metadata, f, indent=2)
             
-            conversation_logger.log_system_event(
+            logger.log_system_event(
                 "message_index_saved",
                 f"Saved message index with {len(messages)} messages"
             )
             
         except Exception as e:
-            conversation_logger.log_error("message_index_save_failed", str(e), "Failed to save message index")
+            logger.log_error("message_index_save_failed", str(e), "Failed to save message index")
     
     def search_similar_messages(self, 
                                query: str, 
@@ -424,7 +424,7 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
             search_time = time.time() - start_time
             
             # Log search results
-            conversation_logger.log_system_event(
+            logger.log_system_event(
                 "message_search_completed",
                 f"Found {len(similar_messages)} similar messages for query '{query[:50]}...' in {search_time:.3f}s"
             )
@@ -432,7 +432,7 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
             return similar_messages
             
         except Exception as e:
-            conversation_logger.log_error("message_search_failed", str(e), f"Failed to search similar messages for query: {query[:100]}")
+            logger.log_error("message_search_failed", str(e), f"Failed to search similar messages for query: {query[:100]}")
             return []
     
     def get_contextual_messages_for_response(self, user_query: str, current_conversation_id: int, max_context_pairs: int = None) -> List[Dict]:
@@ -456,7 +456,7 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
                 query=user_query,
                 k=max_context_pairs * 2,  # Get more candidates to find pairs
                 exclude_conversation_ids=[current_conversation_id],
-                min_similarity_score=0.6,  # Much higher threshold to avoid poor matches
+                min_similarity_score=0.4,  # Much higher threshold to avoid poor matches
                 max_age_days=7  # Only recent messages for relevance
             )
             
@@ -479,14 +479,14 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
                     }
                     context_pairs.append(conversation_pair)
             
-            conversation_logger.log_system_event(
+            logger.log_system_event(
                 "contextual_pairs_retrieved",
                 f"Retrieved {len(context_pairs)} conversation pairs for response generation"
             )            
             return context_pairs
             
         except Exception as e:
-            conversation_logger.log_error("contextual_pairs_failed", str(e), "Failed to get contextual conversation pairs")
+            logger.log_error("contextual_pairs_failed", str(e), "Failed to get contextual conversation pairs")
             return []
     
     def _find_assistant_response_for_user_message(self, user_message_id: int) -> Optional[Dict]:
@@ -525,7 +525,7 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
             return None
             
         except Exception as e:
-            conversation_logger.log_error("assistant_response_lookup_failed", str(e), f"Failed to find assistant response for message {user_message_id}")
+            logger.log_error("assistant_response_lookup_failed", str(e), f"Failed to find assistant response for message {user_message_id}")
             return None
     
     def add_message_to_index(self, message_id: int):
@@ -537,13 +537,13 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
         """
         try:
             # This will be called by the next index update
-            conversation_logger.log_system_event(
+            logger.log_system_event(
                 "message_queued_for_indexing",
                 f"Message {message_id} queued for next index update"
             )
             
         except Exception as e:
-            conversation_logger.log_error("message_index_add_failed", str(e), f"Failed to queue message {message_id} for indexing")
+            logger.log_error("message_index_add_failed", str(e), f"Failed to queue message {message_id} for indexing")
     
     def get_index_statistics(self) -> Dict[str, Any]:
         """Get statistics about the message index"""
@@ -569,17 +569,17 @@ class MessageEmbeddingManager(BaseEmbeddingManager):
             return stats
             
         except Exception as e:
-            conversation_logger.log_error("message_index_stats_failed", str(e), "Failed to get message index statistics")
+            logger.log_error("message_index_stats_failed", str(e), "Failed to get message index statistics")
             return {"error": str(e)}
     
     def rebuild_index(self):
         """Force rebuild the entire message index"""
         try:
-            conversation_logger.log_system_event("message_index_rebuild_start", "Starting manual message index rebuild")
+            logger.log_system_event("message_index_rebuild_start", "Starting manual message index rebuild")
             self.last_indexed_message_id = 0
             self.message_mapping = {}
             self._build_index_from_scratch()
             
         except Exception as e:
-            conversation_logger.log_error("message_index_rebuild_failed", str(e), "Failed to rebuild message index")
+            logger.log_error("message_index_rebuild_failed", str(e), "Failed to rebuild message index")
             raise

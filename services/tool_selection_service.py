@@ -4,7 +4,7 @@ Handles the logic for selecting and matching tools based on user input and conte
 """
 
 from typing import Dict, List, Optional
-from utils.conversation_logger import conversation_logger
+from logger import logger
 
 
 class ToolSelectionService:
@@ -61,7 +61,7 @@ class ToolSelectionService:
                 tool_id = tool.get('id')
                 for context in contextual_pairs:
                     if context.get('tool_id') == tool_id:
-                        conversation_logger.log_system_event(
+                        logger.log_system_event(
                             "tool_selection_match_found",
                             f"Tool '{tool['name']}' matched context tool_id {tool_id}"
                         )
@@ -73,7 +73,7 @@ class ToolSelectionService:
                         }
             
             # No matching tool found
-            conversation_logger.log_system_event(
+            logger.log_system_event(
                 "tool_selection_no_match",
                 f"No tool matched context for query: {user_input[:50]}..."
             )
@@ -84,7 +84,7 @@ class ToolSelectionService:
             }
             
         except Exception as e:
-            conversation_logger.log_error(
+            logger.log_error(
                 "tool_selection_failed", 
                 str(e), 
                 f"Tool selection failed for query: {user_input[:100]}"
